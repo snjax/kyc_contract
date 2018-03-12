@@ -7,19 +7,21 @@ import "../ownership/Ownable.sol";
 contract Registry is Ownable {
 
 
-  enum State {Default, RevokedPermanently, Revoked, Pending, Valid, SomethingElse}
+
+
+  uint8 constant State_RevokedPermanently = 0xff;
+
 
 
   mapping (uint => address) certOwner;
-  mapping (uint => address) certRevoker;
-  mapping (uint => State) certState;
+  mapping (uint => uint) certRevokeHashCode;
+  mapping (uint => uint8) certState;
 
-  event UpdateCertificate(uint indexed _cert, State indexed _state);
-  event AcceptCertificate(uint indexed _cert);
+  event UpdateCertificate(uint indexed _cert, uint8 indexed _state);
   event CreateCertificate(uint indexed _cert, address indexed _owner);
 
   modifier notRevokedPermanentlyCertificate(uint _cert){
-    require(certState[_cert]!=State.RevokedPermanently);
+    require(certState[_cert]!=State_RevokedPermanently);
     _;
   }
 
@@ -39,19 +41,6 @@ contract Registry is Ownable {
   }
 
 
-  modifier notAcceptedCertificate(uint _cert){
-    require(certRevoker[_cert]==address(0));
-    _;
-  }
-
-  modifier acceptedCertificate(uint _cert){
-    require(certRevoker[_cert]!=address(0));
-    _;
-  }
-
-
-
-
 
   /**
     * @dev create new certificate. Only for Registry owner
@@ -61,9 +50,9 @@ contract Registry is Ownable {
     */
 
 
-  function createCertificate(uint _cert, address _owner) notExistedCertificate(_cert) onlyOwner(){
+  function createCertificate(uint _cert, address _owner, uint _certRevokeHashCode) notExistedCertificate(_cert) onlyOwner(){
     certOwner[_cert] = _owner;
-    UpdateCertificate(_cert,  State.Default);
+    certRevokeHashCode[_cert] = _certRevokeHashCode;
     CreateCertificate(_cert, _owner);
   }
 
@@ -73,26 +62,12 @@ contract Registry is Ownable {
     * @return _state State of certificate
     */
 
-  function updateCertificate(uint _cert, State _state) notRevokedPermanentlyCertificate(_cert) acceptedCertificate(_cert) onlyOwner(){
-    certState[_cert] = State(_state);
+  function updateCertificate(uint _cert, uint8 _state) notRevokedPermanentlyCertificate(_cert) onlyOwner(){
+    certState[_cert] = _state;
     UpdateCertificate(_cert, _state);
   }
 
 
-  /**
-    * @dev accept certificate by user and fill revoker address
-    * @param _cert Hash of certificate
-    * @param _revoker address of revoker
-    */
-
-
-  function acceptCertificate(uint _cert, address _revoker)
-    notRevokedPermanentlyCertificate(_cert) notAcceptedCertificate(_cert) existedCertificate(_cert) onlyCertOwner(_cert)
-  {
-    require(_revoker!=address(0));
-    certRevoker[_cert] = _revoker;
-    AcceptCertificate(_cert);
-  }
 
 
   /**
@@ -100,14 +75,22 @@ contract Registry is Ownable {
     * @param _cert Hash of certificate
     */
 
-  function revokePermanentlyCertificate(uint _cert){
-    require((msg.sender==certOwner[_cert])||(msg.sender==certRevoker[_cert])||(msg.sender==owner));
-    certState[_cert] = State.RevokedPermanently;
-    UpdateCertificate(_cert, State.RevokedPermanently);
+  function revokePermanentlyCertificate(uint _cert, uint _certRevokeCode){
+    require(certRevokeHashCode[_cert]==uint(keccak256(_certRevokeCode)));
+    certState[_cert] = State_RevokedPermanently;
+    UpdateCertificate(_cert, State_RevokedPermanently);
   }
 
+  function getCertState(uint _cert) view returns (uint8){
+    return certState[_cert];
+  }
 
+  function getCertOwner(uint _cert) view returns (address){
+    return certOwner[_cert];
+  }
 
-
+  function checkSignature(uint _cert, bytes32 _hash, uint8 _v, bytes32 _r, bytes32 _s) view returns (bool){
+    return certOwner[_cert] == ecrecover(_hash, _v, _r, _s);
+  }
 
 }
