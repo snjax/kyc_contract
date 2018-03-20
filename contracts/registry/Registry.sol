@@ -8,21 +8,28 @@ contract Registry is Ownable {
 
   
 
-
+  uint8 constant NOT_EXISTED = 0x00;
   uint8 constant REVOKED_PERMANENTLY = 0xff;
+  uint8 constant VALID = 0x01;
+  uint8 constant SUSPENDED = 0x02;
+  uint8 constant SUSPENDED_BY_OWNER = 0x03;
+  uint8 constant EXPIRED = 0x04;
 
 
 
   mapping (uint => address) certOwner;
   mapping (uint => uint8) certState;
+  mapping (uint => uint) certExpiredDate;
 
   mapping (uint => uint) certRevokeHashCode;
+  
 
   event UpdateCertificate(uint indexed _cert, uint8 indexed _state);
   event CreateCertificate(uint indexed _cert, address indexed _owner);
 
   modifier notRevokedPermanentlyCertificate(uint _cert){
     require(certState[_cert]!=REVOKED_PERMANENTLY);
+    require(block.timestamp < certExpiredDate[_cert]);
     _;
   }
 
@@ -51,8 +58,10 @@ contract Registry is Ownable {
     */
 
 
-  function createCertificate(uint _cert, address _owner) public notExistedCertificate(_cert) onlyOwner() returns(bool) {
+  function createCertificate(uint _cert, address _owner, uint _expiredDate) public notExistedCertificate(_cert) onlyOwner() returns(bool) {
     certOwner[_cert] = _owner;
+    certState[_cert] = VALID;
+    certExpiredDate[_cert] = _expiredDate;
     CreateCertificate(_cert, _owner);
     return true;
   }
@@ -62,8 +71,9 @@ contract Registry is Ownable {
     * @param _cert Hash of certificate
     * @param _code hashcode of certificate
     */
-  function addRevokeHashCode(uint _cert, uint _code) public notRevokedPermanentlyCertificate(_cert) onlyOwner() returns(bool) {
+  function addRevokeHashCode(uint _cert, uint _code) public notRevokedPermanentlyCertificate(_cert) returns(bool) {
     require(certRevokeHashCode[_code] == 0);
+    require((owner == msg.sender) || (certOwner[_cert] == msg.sender));
     certRevokeHashCode[_code] = _cert;
     return true;
   }
@@ -74,10 +84,20 @@ contract Registry is Ownable {
     * @return _state State of certificate
     */
 
-  function updateCertificate(uint _cert, uint8 _state) public notRevokedPermanentlyCertificate(_cert) onlyOwner() returns(bool) {
-    certState[_cert] = _state;
-    UpdateCertificate(_cert, _state);
-    return true;
+  function updateCertificate(uint _cert, uint8 _state) public notRevokedPermanentlyCertificate(_cert) returns(bool) {
+    if (owner == msg.sender){
+      certState[_cert] = _state;
+      UpdateCertificate(_cert, _state);
+      return true;
+    }
+
+    if ((certOwner[_cert] == msg.sender) && ((certState[_cert] == VALID) || (certState[_cert] == SUSPENDED_BY_OWNER)) && ((_state == VALID) || (_state == SUSPENDED_BY_OWNER))){
+      certState[_cert] = _state;
+      UpdateCertificate(_cert, _state);
+      return true;
+    }
+
+    return false;
   }
 
 
@@ -91,7 +111,7 @@ contract Registry is Ownable {
 
   function revokePermanentlyCertificate(uint _cert, uint _certRevokeCode) public returns(bool) {
     require(_cert != 0);
-    require((_cert == certRevokeHashCode[uint(keccak256(_certRevokeCode))]) || (certOwner[_cert]==msg.sender));
+    require((_cert == certRevokeHashCode[uint(keccak256(_certRevokeCode))]) && (certOwner[_cert]==msg.sender));
 
     certState[_cert] = REVOKED_PERMANENTLY;
     UpdateCertificate(_cert, REVOKED_PERMANENTLY);
@@ -99,7 +119,7 @@ contract Registry is Ownable {
   }
 
   function getCertState(uint _cert) public view returns (uint8) {
-    return certState[_cert];
+    return (block.timestamp < certExpiredDate[_cert]) ? certState[_cert] : EXPIRED;
   }
 
   function getCertOwner(uint _cert) public view returns (address) {
