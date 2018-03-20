@@ -6,7 +6,7 @@ import "../ownership/Ownable.sol";
 
 contract Registry is Ownable {
 
-
+  
 
 
   uint8 constant REVOKED_PERMANENTLY = 0xff;
@@ -14,8 +14,9 @@ contract Registry is Ownable {
 
 
   mapping (uint => address) certOwner;
-  mapping (uint => uint) certRevokeHashCode;
   mapping (uint => uint8) certState;
+
+  mapping (uint => uint) certRevokeHashCode;
 
   event UpdateCertificate(uint indexed _cert, uint8 indexed _state);
   event CreateCertificate(uint indexed _cert, address indexed _owner);
@@ -50,10 +51,20 @@ contract Registry is Ownable {
     */
 
 
-  function createCertificate(uint _cert, address _owner, uint _certRevokeHashCode) public notExistedCertificate(_cert) onlyOwner() returns(bool) {
+  function createCertificate(uint _cert, address _owner) public notExistedCertificate(_cert) onlyOwner() returns(bool) {
     certOwner[_cert] = _owner;
-    certRevokeHashCode[_cert] = _certRevokeHashCode;
     CreateCertificate(_cert, _owner);
+    return true;
+  }
+
+  /**
+    * @dev add hash code to revoke certificate
+    * @param _cert Hash of certificate
+    * @param _code hashcode of certificate
+    */
+  function addRevokeHashCode(uint _cert, uint _code) public notRevokedPermanentlyCertificate(_cert) onlyOwner() returns(bool) {
+    require(certRevokeHashCode[_code] == 0);
+    certRevokeHashCode[_code] = _cert;
     return true;
   }
 
@@ -75,10 +86,13 @@ contract Registry is Ownable {
   /**
     * @dev Remove compromised certificate permanently
     * @param _cert Hash of certificate
+    * @param _certRevokeCode code, must be compared with stored hash certRevokeHashCode. If it is existed, revoke the certificate.
     */
 
   function revokePermanentlyCertificate(uint _cert, uint _certRevokeCode) public returns(bool) {
-    require(certRevokeHashCode[_cert]==uint(keccak256(_certRevokeCode)));
+    require(_cert != 0);
+    require((_cert == certRevokeHashCode[uint(keccak256(_certRevokeCode))]) || (certOwner[_cert]==msg.sender));
+
     certState[_cert] = REVOKED_PERMANENTLY;
     UpdateCertificate(_cert, REVOKED_PERMANENTLY);
     return true;
