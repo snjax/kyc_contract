@@ -84,7 +84,7 @@ contract Registry is Ownable {
     * @return _state State of certificate
     */
 
-  function updateCertificate(uint _cert, uint8 _state) public notRevokedPermanentlyCertificate(_cert) returns(bool) {
+  function updateCertificateState(uint _cert, uint8 _state) public notRevokedPermanentlyCertificate(_cert) returns(bool) {
     if (owner == msg.sender){
       certState[_cert] = _state;
       UpdateCertificate(_cert, _state);
