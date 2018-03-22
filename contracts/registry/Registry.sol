@@ -119,7 +119,7 @@ contract Registry is Ownable {
   }
 
   function getCertState(uint _cert) public view returns (uint8) {
-    return ((block.timestamp < certExpiredDate[_cert]) && (certExpiredDate[_cert] > 0)) ? certState[_cert] : EXPIRED;
+    return ((block.timestamp < certExpiredDate[_cert]) || (certExpiredDate[_cert] == 0)) ? certState[_cert] : EXPIRED;
   }
 
   function getCertOwner(uint _cert) public view returns (address) {
